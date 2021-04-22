@@ -25,3 +25,4 @@ where the 10 refer to how many samples is used to produce these images from the 
 ## TODO
 - Missing output histogram of p-values
 - Missing option to visualize each p-values for R,G,B
+- Only support PFM image format as input
