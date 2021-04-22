@@ -21,3 +21,7 @@ Then you can call:
 ```cargo run --release --example=cli -- out1_welch1.pfm out1_welch2.pfm 10 out2_welch1.pfm out2_welch2.pfm 10```
 
 where the 10 refer to how many samples is used to produce these images from the first and second aglrithm. Optionally the output can be scale using `-s`.
+
+## TODO
+- Missing output histogram of p-values
+- Missing option to visualize each p-values for R,G,B
