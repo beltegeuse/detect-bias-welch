@@ -9,6 +9,8 @@ use byteorder::ReadBytesExt;
 use clap::{App, Arg};
 use std::io::BufRead;
 
+use plotters::prelude::*;
+
 fn load_pfm(filename: &str) -> ((usize, usize), Vec<f32>) {
     let f = std::fs::File::open(std::path::Path::new(filename)).unwrap();
     let mut f = std::io::BufReader::new(f);
@@ -72,9 +74,8 @@ fn viridis_quintic(x: f32) -> (f32, f32, f32) // output colour ramp
 }
 
 fn main() -> Result<()> {
-    let matches = App::new("rustlight")
-        .version("0.2.0")
-        .author("Adrien Gruson <adrien.gruson@gmail.com>")
+    let matches = App::new("detect-bias-welch")
+        .version("0.1.0")
         .about("Detecting bias with Welch's t-test")
         .arg(
             Arg::with_name("img_1_1")
@@ -125,11 +126,18 @@ fn main() -> Result<()> {
                 .takes_value(true)
                 .help("scale output image"),
         )
-        .arg(Arg::with_name("output")
-        .short("output")
-        .default_value("image.png")
-        .takes_value(true)
-        .help("output image"),)
+        .arg(
+            Arg::with_name("histogram")
+                .short("d")
+                .takes_value(true)
+                .help("output histogram (.png)"),
+        )
+        .arg(
+            Arg::with_name("output")
+                .short("output")
+                .takes_value(true)
+                .help("output image (.png)"),
+        )
         .get_matches();
 
     // Get parameter values
@@ -180,54 +188,126 @@ fn main() -> Result<()> {
     let p_values = detect_bias_welch::compute_welch_t_test(
         welch_1_1, welch_1_2, welch_2_1, welch_2_2, spp_1, spp_2,
     );
+
+    let nb_value_valid = p_values.iter().filter(|c| c.is_some()).count();
     println!(
         "{}/{} Welch samples valid",
-        p_values.iter().filter(|c| c.is_some()).count(),
+        nb_value_valid,
         size_welch_1_1.0 * size_welch_1_1.1 * 3
     );
 
-    // Generate PNG
-    // For now we only use min to visualize the output
-    let pixels = p_values[..]
-        .chunks_exact(3)
-        .map(|v| match v {
-            [None, None, None] => vec![0, 0, 0],
-            [r, g, b] => {
-                let r_v = r.unwrap_or(std::f32::MAX);
-                let g_v = g.unwrap_or(std::f32::MAX);
-                let b_v = b.unwrap_or(std::f32::MAX);
-                let v = r_v.min(g_v).min(b_v);
-                let p = viridis_quintic(v);
-                vec![
-                    (p.0.min(1.0) * 255.0) as u8,
-                    (p.1.min(1.0) * 255.0) as u8,
-                    (p.2.min(1.0) * 255.0) as u8,
-                ]
-            }
-            _ => todo!(),
-        })
-        .flatten()
-        .collect::<Vec<_>>();
+    // Compute median and average
+    {
+        let mut value_sorted = p_values
+            .iter()
+            .filter(|c| c.is_some())
+            .map(|v| v.unwrap())
+            .collect::<Vec<_>>();
+        value_sorted.sort_by(|a, b| a.partial_cmp(b).unwrap());
+        println!(" - Median: {}", value_sorted[nb_value_valid / 2]);
+        println!(
+            " - Average: {}",
+            value_sorted.iter().sum::<f32>() / nb_value_valid as f32
+        );
+    }
 
-    // Transform vec to image    
-    let image = image::RgbImage::from_vec(size_welch_1_1.0 as u32, size_welch_1_1.1 as u32, pixels)
-        .unwrap();
-    let image = image::DynamicImage::ImageRgb8(image);
+    if let Some(output_path) = matches.value_of("output") {
+        // Generate PNG
+        // For now we only use min to visualize the output
+        let pixels = p_values[..]
+            .chunks_exact(3)
+            .map(|v| match v {
+                [None, None, None] => vec![0, 0, 0],
+                [r, g, b] => {
+                    let r_v = r.unwrap_or(std::f32::MAX);
+                    let g_v = g.unwrap_or(std::f32::MAX);
+                    let b_v = b.unwrap_or(std::f32::MAX);
+                    let v = r_v.min(g_v).min(b_v);
+                    let p = viridis_quintic(v);
+                    vec![
+                        (p.0.min(1.0) * 255.0) as u8,
+                        (p.1.min(1.0) * 255.0) as u8,
+                        (p.2.min(1.0) * 255.0) as u8,
+                    ]
+                }
+                _ => todo!(),
+            })
+            .flatten()
+            .collect::<Vec<_>>();
 
-    // Scale the image if necessary
-    let scale = value_t_or_exit!(matches.value_of("scale"), f32);
-    let image = if scale == 1.0 {
-        image
-    } else {
-        image.resize(
-            (size_welch_1_1.0 as f32 * scale) as u32,
-            (size_welch_1_1.1 as f32 * scale) as u32,
-            image::imageops::Nearest,
-        )
-    };
+        // Transform vec to image
+        let image =
+            image::RgbImage::from_vec(size_welch_1_1.0 as u32, size_welch_1_1.1 as u32, pixels)
+                .unwrap();
+        let image = image::DynamicImage::ImageRgb8(image);
 
-    let output_path = value_t_or_exit!(matches.value_of("output"), String);
-    image.save(&std::path::Path::new(&output_path))?;
+        // Scale the image if necessary
+        let scale = value_t_or_exit!(matches.value_of("scale"), f32);
+        let image = if scale == 1.0 {
+            image
+        } else {
+            image.resize(
+                (size_welch_1_1.0 as f32 * scale) as u32,
+                (size_welch_1_1.1 as f32 * scale) as u32,
+                image::imageops::Nearest,
+            )
+        };
+
+        // Save color image
+        image.save(&std::path::Path::new(&output_path))?;
+    }
+
+    // Compute histogram of p-values if needed
+    if let Some(outhist) = matches.value_of("histogram") {
+        let root = BitMapBackend::new(outhist, (640, 480)).into_drawing_area();
+        root.fill(&WHITE)?;
+
+        // Compute the bin for the histogram
+        let data = p_values
+            .iter()
+            .filter(|s| s.is_some())
+            .map(|v| (v.unwrap() * 10.0).min(9.0) as u32)
+            .collect::<Vec<u32>>();
+
+        // Compute the biggest bin
+        let mut nbs = vec![0; 10];
+        for d in &data {
+            nbs[*d as usize] += 1;
+        }
+        let nbs_max = *nbs.iter().max().unwrap() as u32;
+
+        // Build Chart
+        let mut chart = ChartBuilder::on(&root)
+            .x_label_area_size(35)
+            .y_label_area_size(40)
+            .margin(5)
+            .caption("Histogram P-values", ("sans-serif", 30))
+            .build_cartesian_2d((0u32..9u32).into_segmented(), 0u32..nbs_max)?;
+
+        chart
+            .configure_mesh()
+            .disable_x_mesh()
+            .bold_line_style(&WHITE.mix(0.3))
+            .y_desc("Count")
+            .x_desc("P-values")
+            .axis_desc_style(("sans-serif", 15))
+            .x_label_formatter(&|v| match v {
+                SegmentValue::CenterOf(v) => {
+                    format!("{} - {}", *v as f32 / 10.0, (*v + 1) as f32 / 10.0).to_string()
+                }
+                SegmentValue::Exact(v) => {
+                    format!("{} - {}", *v as f32 / 10.0, (*v + 1) as f32 / 10.0).to_string()
+                }
+                _ => todo!(),
+            })
+            .draw()?;
+
+        chart.draw_series(
+            Histogram::vertical(&chart)
+                .style(BLUE.mix(0.5).filled())
+                .data(data.iter().map(|x: &u32| (*x, 1))),
+        )?;
+    }
 
     Ok(())
 }

@@ -18,11 +18,36 @@ Here the command line client accepts PFM images directly. Imagine you have:
 
 Then you can call:
 
-```cargo run --release --example=cli -- out1_welch1.pfm out1_welch2.pfm 10 out2_welch1.pfm out2_welch2.pfm 10```
+```cargo run --release --example=cli -- out1_welch1.pfm out1_welch2.pfm 10 out2_welch1.pfm out2_welch2.pfm 10 -o img.png -d hist.png```
 
-where the 10 refer to how many samples is used to produce these images from the first and second aglrithm. Optionally the output can be scale using `-s`.
+where the 10 refer to how many samples is used to produce these images from the first and second aglrithm. `-o` and `-d` are optional flag to output false color image or p-values historgram.
+
+For more information please use `cargo run --release --example=cli -- -h`:
+```
+detect-bias-welch 0.1.0
+Detecting bias with Welch's t-test
+
+USAGE:
+    cli [OPTIONS] <img_1_1> <img_1_2> <img_1_spp> <img_2_1> <img_2_2> <img_2_spp>
+
+FLAGS:
+    -h, --help       Prints help information
+    -V, --version    Prints version information
+
+OPTIONS:
+    -d <histogram>        output histogram (.png)
+    -o <output>           output image (.png)
+    -s <scale>            scale output image [default: 1.0]
+
+ARGS:
+    <img_1_1>      First image containing sum
+    <img_1_2>      First image containing sum of squared element
+    <img_1_spp>    image 1 number of samples
+    <img_2_1>      Second image containing sum
+    <img_2_2>      Second image containing sum of squared element
+    <img_2_spp>    image 1 number of samples
+```
 
 ## TODO
-- Missing output histogram of p-values
 - Missing option to visualize each p-values for R,G,B
 - Only support PFM image format as input
